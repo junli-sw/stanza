@@ -21,11 +21,12 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from stanza.models.common.data import get_long_tensor
 from stanza.models.common.utils import unsort
 from stanza.models.common.vocab import PAD_ID, UNK_ID
+from stanza.models.constituency import utils
 from stanza.models.constituency.base_model import BaseModel
 from stanza.models.constituency.parse_transitions import TransitionScheme
 from stanza.models.constituency.parse_tree import Tree
 from stanza.models.constituency.tree_stack import TreeStack
-from stanza.models.constituency.utils import build_nonlinearity, initialize_linear, TextTooLongError
+from stanza.models.constituency.utils import TextTooLongError
 from stanza.models.constituency.partitioned_transformer import PartitionedTransformerModule
 from stanza.models.constituency.label_attention import LabelAttentionModule
 
@@ -244,16 +245,19 @@ class LSTMModel(BaseModel, nn.Module):
                 self.word_input_size = self.word_input_size + self.args['lattn_d_proj']*self.args['lattn_d_l']
 
         self.word_lstm = nn.LSTM(input_size=self.word_input_size, hidden_size=self.hidden_size, num_layers=self.num_lstm_layers, bidirectional=True, dropout=self.lstm_layer_dropout)
+        utils.initialize_lstm(self.word_lstm)
 
         # after putting the word_delta_tag input through the word_lstm, we get back
         # hidden_size * 2 output with the front and back lstms concatenated.
         # this transforms it into hidden_size with the values mixed together
         self.word_to_constituent = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        initialize_linear(self.word_to_constituent, self.args['nonlinearity'], self.hidden_size * 2)
+        utils.initialize_linear(self.word_to_constituent, self.args['nonlinearity'], self.hidden_size * 2)
 
         self.transition_lstm = nn.LSTM(input_size=self.transition_embedding_dim, hidden_size=self.transition_hidden_size, num_layers=self.num_lstm_layers, dropout=self.lstm_layer_dropout)
+        utils.initialize_lstm(self.transition_lstm)
         # input_size is hidden_size - could introduce a new constituent_size instead if we liked
         self.constituent_lstm = nn.LSTM(input_size=self.hidden_size, hidden_size=self.hidden_size, num_layers=self.num_lstm_layers, dropout=self.lstm_layer_dropout)
+        utils.initialize_lstm(self.constituent_lstm)
 
         self._transition_scheme = args['transition_scheme']
         if self._transition_scheme is TransitionScheme.TOP_DOWN_UNARY:
@@ -284,17 +288,18 @@ class LSTMModel(BaseModel, nn.Module):
             # constituents into one, combined into a bi-lstm
             # TODO: make the hidden size here an option?
             self.constituent_reduce_lstm = nn.LSTM(input_size=self.hidden_size, hidden_size=self.hidden_size, num_layers=self.num_lstm_layers, bidirectional=True, dropout=self.lstm_layer_dropout)
+            utils.initialize_lstm(self.constituent_reduce_lstm)
             # affine transformation from bi-lstm reduce to a new hidden layer
             self.reduce_linear = nn.Linear(self.hidden_size * 2, self.hidden_size)
-            initialize_linear(self.reduce_linear, self.args['nonlinearity'], self.hidden_size * 2)
+            utils.initialize_linear(self.reduce_linear, self.args['nonlinearity'], self.hidden_size * 2)
         elif self.constituency_composition == ConstituencyComposition.MAX:
             # transformation to turn several constituents into one new constituent
             self.reduce_linear = nn.Linear(self.hidden_size, self.hidden_size)
-            initialize_linear(self.reduce_linear, self.args['nonlinearity'], self.hidden_size)
+            utils.initialize_linear(self.reduce_linear, self.args['nonlinearity'], self.hidden_size)
         else:
             raise ValueError("Unhandled ConstituencyComposition: {}".format(self.constituency_composition))
 
-        self.nonlinearity = build_nonlinearity(self.args['nonlinearity'])
+        self.nonlinearity = utils.build_nonlinearity(self.args['nonlinearity'])
 
         self.word_dropout = nn.Dropout(self.args['word_dropout'])
         self.predict_dropout = nn.Dropout(self.args['predict_dropout'])
@@ -322,7 +327,7 @@ class LSTMModel(BaseModel, nn.Module):
         output_layers = nn.ModuleList([nn.Linear(input_size, output_size)
                                        for input_size, output_size in zip(predict_input_size, predict_output_size)])
         for output_layer, input_size in zip(output_layers, predict_input_size):
-            initialize_linear(output_layer, self.args['nonlinearity'], input_size)
+            utils.initialize_linear(output_layer, self.args['nonlinearity'], input_size)
         return output_layers
 
     def num_words_known(self, words):

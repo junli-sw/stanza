@@ -124,3 +124,15 @@ def initialize_linear(linear, nonlinearity, bias):
     if nonlinearity in ('relu', 'leaky_relu'):
         nn.init.kaiming_normal_(linear.weight, nonlinearity=nonlinearity)
         nn.init.uniform_(linear.bias, 0, 1 / (bias * 2) ** 0.5)
+
+def initialize_lstm(lstm):
+    """
+    Initialize input gates to -1 and forget gates to 1
+    """
+    for i, j in lstm.named_parameters():
+        if i.startswith("bias_"):
+            # bias vectors go input-forget-cell-output
+            bias_size = j.shape[0]
+            hidden_size = bias_size // 4
+            nn.init.constant_(j[:hidden_size], val=-1.0)
+            nn.init.constant_(j[hidden_size:hidden_size*2], val=1.0)
