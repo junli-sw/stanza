@@ -289,7 +289,25 @@ class LSTMModel(BaseModel, nn.Module):
             initialize_linear(self.reduce_linear, self.args['nonlinearity'], self.hidden_size * 2)
         elif self.constituency_composition == ConstituencyComposition.MAX:
             # transformation to turn several constituents into one new constituent
-            self.reduce_linear = nn.Linear(self.hidden_size, self.hidden_size)
+            # Initializations for the Partitioned Attention
+            # experiments suggest having a bias does not help here
+            composition_d = self.hidden_size // 2 * 2
+            self.reduce_transformer = PartitionedTransformerModule(
+                self.args['pattn_num_layers'],
+                d_model=composition_d,
+                n_head=self.args['pattn_num_heads'],
+                d_qkv=self.args['pattn_d_kv'],
+                d_ff=composition_d * 2,
+                ff_dropout=self.args['pattn_relu_dropout'],
+                residual_dropout=self.args['pattn_residual_dropout'],
+                attention_dropout=self.args['pattn_attention_dropout'],
+                word_input_size=self.hidden_size,
+                bias=self.args['pattn_bias'],
+                morpho_emb_dropout=self.args['pattn_morpho_emb_dropout'],
+                timing=self.args['pattn_timing'],
+                encoder_max_len=self.args['pattn_encoder_max_len']
+            )
+            self.reduce_linear = nn.Linear(composition_d, self.hidden_size)
             initialize_linear(self.reduce_linear, self.args['nonlinearity'], self.hidden_size)
         else:
             raise ValueError("Unhandled ConstituencyComposition: {}".format(self.constituency_composition))
@@ -703,7 +721,9 @@ class LSTMModel(BaseModel, nn.Module):
 
             hx = self.reduce_linear(torch.cat((forward_hx, backward_hx), axis=1))
         elif self.constituency_composition == ConstituencyComposition.MAX:
-            unpacked_hx = [self.lstm_input_dropout(torch.max(torch.stack(nhx), 0).values) for nhx in node_hx]
+            unpacked_hx = [torch.stack(nhx) for nhx in node_hx]
+            partitioned_embeddings = self.reduce_transformer(None, unpacked_hx)
+            unpacked_hx = [self.lstm_input_dropout(torch.max(nhx, 0).values) for nhx in partitioned_embeddings]
             packed_hx = torch.stack(unpacked_hx, axis=0)
             hx = self.reduce_linear(packed_hx)
         else:
