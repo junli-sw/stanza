@@ -723,9 +723,8 @@ class LSTMModel(BaseModel, nn.Module):
         elif self.constituency_composition == ConstituencyComposition.MAX:
             unpacked_hx = [torch.stack(nhx) for nhx in node_hx]
             partitioned_embeddings = self.reduce_transformer(None, unpacked_hx)
-            unpacked_hx = [self.lstm_input_dropout(torch.max(nhx, 0).values) for nhx in partitioned_embeddings]
-            packed_hx = torch.stack(unpacked_hx, axis=0)
-            hx = self.reduce_linear(packed_hx)
+            unpacked_hx = [self.lstm_input_dropout(torch.max(self.reduce_linear(nhx), 0).values) for nhx in partitioned_embeddings]
+            hx = torch.stack(unpacked_hx, axis=0)
         else:
             raise ValueError("Unhandled ConstituencyComposition: {}".format(self.constituency_composition))
 
