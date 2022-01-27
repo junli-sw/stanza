@@ -50,6 +50,9 @@ A couple experiments which have been tried with little noticeable impact:
   - Highway LSTMs also made no difference
   - Putting labels on the shift transitions (the word or the tag shifted)
     or putting labels on the close transitions didn't help
+  - Using the output of the constituent lstm to build new constituents
+    instead of using the embedding of the constituent children
+    was more complicated and slightly less effective
 
 The code breakdown is as follows:
 
@@ -266,8 +269,6 @@ def parse_args(args=None):
     parser.add_argument('--transition_scheme', default=TransitionScheme.IN_ORDER, type=lambda x: TransitionScheme[x.upper()],
                         help='Transition scheme to use.  {}'.format(", ".join(x.name for x in TransitionScheme)))
 
-    parser.add_argument('--constituency_lstm', default=False, action='store_true', help="Build constituents using the full LSTM instead of just the nodes below the new constituent.  Doesn't match the original papers and might be slightly less effective")
-
     # combining dummy and open node embeddings might be a slight improvement
     # for example, after 550 iterations, one experiment had
     # True:     0.9154
@@ -292,6 +293,7 @@ def parse_args(args=None):
     parser.add_argument('--tag_unknown_frequency', default=0.001, type=float, help='How often to replace a tag with UNK when training')
 
     parser.add_argument('--num_lstm_layers', default=2, type=int, help='How many layers to use in the LSTMs')
+    parser.add_argument('--num_tree_lstm_layers', default=2, type=int, help='How many layers to use in the LSTMs')
     parser.add_argument('--num_output_layers', default=3, type=int, help='How many layers to use at the prediction level')
 
     parser.add_argument('--sentence_boundary_vectors', default=SentenceBoundary.EVERYTHING, type=lambda x: SentenceBoundary[x.upper()],
